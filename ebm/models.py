@@ -441,3 +441,104 @@ class DBN(object):
         dicts = torch.load(filename)
         for i, layer in enumerate(self.gen_layers + self.inference_layers):
             layer.load_state_dict(dicts[i])
+
+class BM(Module):
+
+    def __init__(self, n_nodes=100, sampler=None, optimizer=None,
+                 device=None, W=None, bias=None):
+        '''Constructor for the class.
+        Arguments:
+            :param n_nodes: The number of nodes
+            :type n_nodes: int
+            :param sampler: Method used to draw samples from the model
+            :type sampler: :class:`samplers`
+            :param optimizer: Optimizer used for parameter updates
+            :type optimizer: :class:`optimizers`
+            :param device: Device where to perform computations. None is CPU.
+            :type device: torch.device
+            :param W: Optional parameter to specify the weights of the BM
+            :type W: torch.nn.Parameter
+            :param bias: Optional parameter to specify the biases of the BM
+            :type bias: torch.nn.Parameter
+        '''
+
+        super(BM, self).__init__()
+
+        if device is not None:
+            self.device = device
+        else:
+            self.device = torch.device('cpu')
+        
+        if W is not None:
+            self.W = Parameter(W.to(self.device))
+        else:
+            rnd = 0.01 * np.random.randn(n_nodes, n_nodes)
+            rnd = rnd + rnd.T
+            np.fill_diagonal(rnd, 0)
+            self.W = Parameter(torch.from_numpy(rnd).type(torch.float).to(self.device))
+        self.register_parameter('weights', self.W)
+
+        if bias is not None:
+            self.bias = Parameter(bias.to(self.device))
+        else:
+            self.bias = Parameter(torch.Tensor(
+                                               torch.zeros(n_nodes)
+                                               ).to(self.device))
+        self.register_parameter('bias', self.bias)
+
+        for param in self.parameters():
+            param.requires_grad = False
+
+        if optimizer is None:
+            raise Exception('You must provide an appropriate optimizer')
+        self.optimizer = optimizer
+
+        if sampler is None:
+            raise Exception('You must provide an appropriate sampler')
+        self.sampler = sampler
+
+    def energy(self, v):
+        '''Computes the energy for a given state of the nodes.
+        Arguments:
+            :param v: The state of the visible layer of the RBM
+            :type v: torch.Tensor
+            :returns: torch.Tensor
+        '''
+        bias_term = v.mv(self.bias)
+        xwx = torch.einsum('bi,ij,bj->b', (v, self.W, v))
+        return (-xwx - bias_term)
+
+    def train(self, input_data):
+        '''Trains the RBM.
+        Arguments:
+            :param input_data: Batch of training points
+            :type input_data: torch.utils.data.DataLoader
+            :param lr: Learning rate
+            :type lr: float
+            :param weight_decay: Weight decay parameter, to prevent overfitting
+            :type weight_decay: float
+            :param momentum: Momentum parameter, for improved learning
+            :type momentum: float
+            :param epoch: Optional parameter to show epoch in screen
+            :type epoch: int
+        '''
+        error_ = []
+        for batch in tqdm(input_data, desc=('Epoch ' +
+                                            str(self.optimizer.epoch + 1))):
+            sample_data = batch.float()
+            # Sampling from the model to compute updates
+            # Get positive phase from the data
+            vpos = sample_data
+            # Get negative phase from the chains
+            vneg = self.sampler.get_negative_phase(vpos, self.W,
+                                                   self.bias).to(self.device)
+
+            # Weight updates. Includes momentum and weight decay
+            W_update, bias_update = \
+                             self.optimizer.get_updates(vpos, vneg,
+                                                        self.W, self.bias)
+
+            self.W.data    += W_update.data
+            self.bias.data += bias_update.data
+            
+        self.optimizer.epoch += 1
