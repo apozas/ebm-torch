@@ -96,8 +96,8 @@ class SGD(Optimizer):
         # optimized is (NLL - weight_decay * W)
         self.W_update -= self.learning_rate * self.weight_decay * W
 
-        hpos = linear(vpos, W, hbias)
-        hneg = linear(vneg, W, hbias)
+        hpos = torch.sigmoid(linear(vpos, W, hbias))
+        hneg = torch.sigmoid(linear(vneg, W, hbias))
         deltaW = (outer_product(hpos, vpos).mean(0)
                   - outer_product(hneg, vneg).mean(0))
         deltah = hpos.mean(0) - hneg.mean(0)
@@ -145,8 +145,8 @@ class Adam(Optimizer):
             self.v_h = torch.zeros_like(hbias)
             self.first_call = False
 
-        hpos = linear(vpos, W, hbias)
-        hneg = linear(vneg, W, hbias)
+        hpos = torch.sigmoid(linear(vpos, W, hbias))
+        hneg = torch.sigmoid(linear(vneg, W, hbias))
         deltaW = (outer_product(hpos, vpos).mean(0)
                   - outer_product(hneg, vneg).mean(0))
         deltah = hpos.mean(0) - hneg.mean(0)

@@ -153,7 +153,7 @@ class PersistentContrastiveDivergence(ContrastiveDivergence):
         for _ in range(self.k):
             h = self.get_h_from_v(self.markov_chains, W, hbias)
             v = self.get_v_from_h(h, W, vbias)
-            self.markov_chains.data = v
+            self.markov_chains = v
         return v
 
 class ParallelTempering(PersistentContrastiveDivergence):
