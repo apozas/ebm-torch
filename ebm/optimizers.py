@@ -2,7 +2,7 @@
 #
 # Author: Alejandro Pozas-Kerstjens
 # Requires: pytorch as ML framework
-# Last modified: Aug, 2018
+# Last modified: Jul, 2019
 
 import torch
 from torch.nn.functional import linear
@@ -27,7 +27,7 @@ class Optimizer(object):
         '''Constructor for the class.
         '''
 
-    def get_updates(self, vpos, vneg, W, vbias, hbias):
+    def get_updates(self, vpos, vneg, weights, vbias, hbias):
         '''Obtains the parameter updates for weights and biases
 
         Arguments:
@@ -36,8 +36,8 @@ class Optimizer(object):
             :type vpos: torch.Tensor
             :param vneg: Negative phase of the visible nodes
             :type vneg: torch.Tensor
-            :param W: Weights connecting the visible and hidden layers
-            :type W: torch.nn.Parameter
+            :param weights: Weights connecting the visible and hidden layers
+            :type weights: torch.nn.Parameter
             :param vbias: Biases for the visible nodes
             :type vbias: torch.nn.Parameter
             :param hbias: Biases for the hidden nodes
@@ -79,9 +79,9 @@ class SGD(Optimizer):
         self.first_call = True
         self.epoch = 0
 
-    def get_updates(self, vpos, vneg, W, vbias, hbias):
+    def get_updates(self, vpos, vneg, weights, vbias, hbias):
         if self.first_call:
-            self.W_update = torch.zeros_like(W)
+            self.W_update = torch.zeros_like(weights)
             self.vbias_update = torch.zeros_like(vbias)
             self.hbias_update = torch.zeros_like(hbias)
             self.first_call = False
@@ -90,14 +90,14 @@ class SGD(Optimizer):
         self.hbias_update *= self.momentum
         self.vbias_update *= self.momentum
 
-        # Weight decay is only applied to W, because they are the maximum
+        # Weight decay is only applied to weights, because they are the maximum
         # responsibles for overfitting
         # Note that we multiply by the learning rate, so the function
-        # optimized is (NLL - weight_decay * W)
-        self.W_update -= self.learning_rate * self.weight_decay * W
+        # optimized is (NLL - weight_decay * weights)
+        self.W_update -= self.learning_rate * self.weight_decay * weights
 
-        hpos = torch.sigmoid(linear(vpos, W, hbias))
-        hneg = torch.sigmoid(linear(vneg, W, hbias))
+        hpos = torch.sigmoid(linear(vpos, weights, hbias))
+        hneg = torch.sigmoid(linear(vneg, weights, hbias))
         deltaW = (outer_product(hpos, vpos).mean(0)
                   - outer_product(hneg, vneg).mean(0))
         deltah = hpos.mean(0) - hneg.mean(0)
@@ -135,18 +135,18 @@ class Adam(Optimizer):
         self.first_call = True
         self.epoch = 0
 
-    def get_updates(self, vpos, vneg, W, vbias, hbias):
+    def get_updates(self, vpos, vneg, weights, vbias, hbias):
         if self.first_call:
-            self.m_W = torch.zeros_like(W)
+            self.m_W = torch.zeros_like(weights)
             self.m_v = torch.zeros_like(vbias)
             self.m_h = torch.zeros_like(hbias)
-            self.v_W = torch.zeros_like(W)
+            self.v_W = torch.zeros_like(weights)
             self.v_v = torch.zeros_like(vbias)
             self.v_h = torch.zeros_like(hbias)
             self.first_call = False
 
-        hpos = torch.sigmoid(linear(vpos, W, hbias))
-        hneg = torch.sigmoid(linear(vneg, W, hbias))
+        hpos = torch.sigmoid(linear(vpos, weights, hbias))
+        hneg = torch.sigmoid(linear(vneg, weights, hbias))
         deltaW = (outer_product(hpos, vpos).mean(0)
                   - outer_product(hneg, vneg).mean(0))
         deltah = hpos.mean(0) - hneg.mean(0)

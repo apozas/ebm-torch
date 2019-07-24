@@ -5,7 +5,7 @@
 #           numpy for numerics
 #           pytorch as ML framework
 #           tqdm for progress bar
-# Last modified: Sep, 2018
+# Last modified: Jul, 2019
 
 import torch
 from copy import deepcopy
@@ -18,7 +18,7 @@ from tqdm import tqdm
 class RBM(Module):
 
     def __init__(self, n_visible=100, n_hidden=50, sampler=None, optimizer=None,
-                 device=None, W=None, hbias=None, vbias=None):
+                 device=None, weights=None, hbias=None, vbias=None):
         '''Constructor for the class.
 
         Arguments:
@@ -35,8 +35,8 @@ class RBM(Module):
             :type device: torch.device
             :param verbose: Optional parameter to set verbosity mode
             :type verbose: int
-            :param W: Optional parameter to specify the weights of the RBM
-            :type W: torch.nn.Parameter
+            :param weights: Optional parameter to specify the weights of the RBM
+            :type weights: torch.nn.Parameter
             :param hbias: Optional parameter to specify the hidden biases of
                           the RBM
             :type hbias: torch.nn.Parameter
@@ -52,29 +52,22 @@ class RBM(Module):
         else:
             self.device = torch.device('cpu')
 
-        if W is not None:
-            self.W = Parameter(W.to(self.device))
+        if weights is not None:
+            self.weights = Parameter(weights.to(self.device))
         else:
-            self.W = Parameter(torch.Tensor(
-                                        0.01 * torch.randn(n_hidden, n_visible)
-                                            ).to(self.device))
-        self.register_parameter('weights', self.W)
+            self.weights = Parameter(0.01 * torch.randn(n_hidden,
+                                                        n_visible
+                                                        ).to(self.device))
 
         if hbias is not None:
             self.hbias = Parameter(hbias.to(self.device))
         else:
-            self.hbias = Parameter(torch.Tensor(
-                                                torch.zeros(n_hidden)
-                                                ).to(self.device))
-        self.register_parameter('hbias', self.hbias)
+            self.hbias = Parameter(torch.zeros(n_hidden).to(self.device))
 
         if vbias is not None:
             self.vbias = Parameter(vbias.to(self.device))
         else:
-            self.vbias = Parameter(torch.Tensor(
-                                                torch.zeros(n_visible)
-                                                ).to(self.device))
-        self.register_parameter('vbias', self.vbias)
+            self.vbias = Parameter(torch.zeros(n_visible).to(self.device))
         
         for param in self.parameters():
             param.requires_grad = False
@@ -98,7 +91,7 @@ class RBM(Module):
             :returns: torch.Tensor
         '''
         vbias_term = v.mv(self.vbias)
-        wx_b = linear(v, self.W, self.hbias)
+        wx_b = linear(v, self.weights, self.hbias)
         hidden_term = softplus(wx_b).sum(1)
         return (-hidden_term - vbias_term)
 
@@ -117,17 +110,17 @@ class RBM(Module):
             # Get positive phase from the data
             vpos = sample_data
             # Get negative phase from the chains
-            vneg = self.sampler.get_negative_sample(vpos, self.W,
+            vneg = self.sampler.get_negative_sample(vpos, self.weights,
                                                     self.vbias, self.hbias)
 
             # Weight updates. Includes momentum and weight decay
             W_update, vbias_update, hbias_update = \
-                             self.optimizer.get_updates(vpos, vneg, self.W,
+                            self.optimizer.get_updates(vpos, vneg, self.weights,
                                                         self.vbias, self.hbias)
 
-            self.W     += W_update
-            self.hbias += hbias_update
-            self.vbias += vbias_update
+            self.weights += W_update
+            self.hbias   += hbias_update
+            self.vbias   += vbias_update
 
         self.optimizer.epoch += 1
 
@@ -233,14 +226,14 @@ class DBN(object):
                 total_layer_input = []
                 for _ in range(self.sample_copies):
                     sample = self.sampler.get_h_from_v(layer_input,
-                                                       self.gen_layers[i-1].W,
-                                                    self.gen_layers[i-1].hbias)
+                                                   self.gen_layers[i-1].weights,
+                                                   self.gen_layers[i-1].hbias)
                     total_layer_input.append(sample.data)
                 layer_input = torch.cat(total_layer_input, 0)
                 if test is not None:
                     test = self.sampler.get_h_from_v(test,
-                                                     self.gen_layers[i-1].W,
-                                                    self.gen_layers[i-1].hbias)
+                                                   self.gen_layers[i-1].weights,
+                                                   self.gen_layers[i-1].hbias)
             
             self.sampler.first_call = True
             self.optimizer.first_call = True
@@ -297,12 +290,12 @@ class DBN(object):
                 for i, rbm in enumerate(self.inference_layers[:-1]):
                     layer_input = wakepos_samples[-1]
                     sample = self.sampler.get_h_from_v(layer_input,
-                                                       rbm.W,
+                                                       rbm.weights,
                                                        rbm.hbias)
                     wakepos_samples.append(sample)
                 
                 sample = self.sampler.get_h_from_v(wakepos_samples[-1],
-                                                   top_RBM.W,
+                                                   top_RBM.weights,
                                                    top_RBM.hbias)
                 wakepos_samples.append(sample)
                 self.sampler.internal_sampling = False
@@ -315,11 +308,11 @@ class DBN(object):
                 if (idx == 0) and (epoch == 0):
                     self.sampler.first_call = True
                 v_sample = self.sampler.get_v_sample(wakepos_samples[-2],
-                                                     top_RBM.W,
+                                                     top_RBM.weights,
                                                      top_RBM.vbias,
                                                      top_RBM.hbias)
                 h_sample = self.sampler.get_h_from_v(v_sample,
-                                                     top_RBM.W,
+                                                     top_RBM.weights,
                                                      top_RBM.hbias)
                 # Take negative phase statistics on the top RBM
                 neg_W_top = outer_product(h_sample, v_sample)
@@ -331,7 +324,7 @@ class DBN(object):
                     if i == 0:
                         self.sampler.continuous_output = self.continuous_output
                     sleeppos_sample = self.sampler.get_v_from_h(layer_input,
-                                                                rbm.W,
+                                                                rbm.weights,
                                                                 rbm.vbias)
                     sleeppos_samples.append(sleeppos_sample)
                 # Go back to normal order, where the first element corresponds
@@ -352,13 +345,13 @@ class DBN(object):
                         self.sampler.continuous_output = False
                     sleepneg_sample = (
                                self.sampler.get_h_from_v(sleeppos_samples[i],
-                                                self.inference_layers[i].W,
-                                                self.inference_layers[i].hbias)
+                                               self.inference_layers[i].weights,
+                                               self.inference_layers[i].hbias)
                                        )
                     wakeneg_sample = (
                                 self.sampler.get_v_from_h(wakepos_samples[i+1],
-                                                          self.gen_layers[i].W,
-                                                      self.gen_layers[i].vbias)
+                                                     self.gen_layers[i].weights,
+                                                     self.gen_layers[i].vbias)
                                       )
                     sleepneg_samples.append(sleepneg_sample)
                     wakeneg_samples.append(wakeneg_sample)
@@ -369,25 +362,25 @@ class DBN(object):
                     deltaW     = outer_product(wakepos_samples[i+1],
                                                wakediff_i).mean(0)
                     deltav     = wakediff_i.mean(0)
-                    rbm.W.data     += lr * deltaW.data
-                    rbm.vbias.data += lr * deltav.data
+                    rbm.weights.data += lr * deltaW.data
+                    rbm.vbias.data   += lr * deltav.data
                     # The lack of update to hidden biases is because the
                     # generation weights are only used in top-down propagation
                 # Updates to top RBM parameters
                 deltaW = (pos_W_top - neg_W_top)
                 deltav = (wakepos_samples[-2] - sleeppos_samples[-2])
                 deltah = (wakepos_samples[-1] - sleeppos_samples[-1])
-                top_RBM.W.data     += lr * deltaW.mean(0)
-                top_RBM.vbias.data += lr * deltav.mean(0)
-                top_RBM.hbias.data += lr * deltah.mean(0)
+                top_RBM.weights.data += lr * deltaW.mean(0)
+                top_RBM.vbias.data   += lr * deltav.mean(0)
+                top_RBM.hbias.data   += lr * deltah.mean(0)
                 # Updates to inference parameters
                 for i, rbm in enumerate(self.inference_layers):
                     sleepdiff_i = sleeppos_samples[i+1] - sleepneg_samples[i+1]
                     deltaW      = outer_product(sleepdiff_i,
                                                 sleeppos_samples[i]).mean(0)
                     deltah      = sleepdiff_i.mean(0)
-                    rbm.W.data     += lr * deltaW
-                    rbm.hbias.data += lr * deltah
+                    rbm.weights.data += lr * deltaW
+                    rbm.hbias.data   += lr * deltah
                     # As above, the lack of visible bias update is because the
                     # inference weights are only used in bottom-up propagation
 
@@ -408,12 +401,13 @@ class DBN(object):
         rbm    = self.gen_layers[-1]
         sample = torch.zeros(rbm.vbias.size()).to(self.device)
         self.sampler.continuous_output = False
-        sample = self.sampler.get_v_sample(sample, rbm.W, rbm.vbias, rbm.hbias)
+        sample = self.sampler.get_v_sample(sample, rbm.weights,
+                                           rbm.vbias, rbm.hbias)
         for i, rbm_layer in reversed(list(enumerate(self.gen_layers[:-1]))):
             if i == 0:
                 self.sampler.continuous_output = self.continuous_output
             sample = self.sampler.get_v_from_h(sample,
-                                               rbm_layer.W,
+                                               rbm_layer.weights,
                                                rbm_layer.vbias)
         return sample
 
@@ -445,7 +439,7 @@ class DBN(object):
 class BM(Module):
 
     def __init__(self, n_nodes=100, sampler=None, optimizer=None,
-                 device=None, W=None, bias=None):
+                 device=None, weights=None, bias=None):
         '''Constructor for the class.
         Arguments:
             :param n_nodes: The number of nodes
@@ -456,8 +450,8 @@ class BM(Module):
             :type optimizer: :class:`optimizers`
             :param device: Device where to perform computations. None is CPU.
             :type device: torch.device
-            :param W: Optional parameter to specify the weights of the BM
-            :type W: torch.nn.Parameter
+            :param weights: Optional parameter to specify the weights of the BM
+            :type weights: torch.nn.Parameter
             :param bias: Optional parameter to specify the biases of the BM
             :type bias: torch.nn.Parameter
         '''
@@ -469,14 +463,13 @@ class BM(Module):
         else:
             self.device = torch.device('cpu')
         
-        if W is not None:
-            self.W = Parameter(W.to(self.device))
+        if weights is not None:
+            self.weights = Parameter(weights.to(self.device))
         else:
             rnd = 0.01 * np.random.randn(n_nodes, n_nodes)
             rnd = rnd + rnd.T
             np.fill_diagonal(rnd, 0)
-            self.W = Parameter(torch.from_numpy(rnd).type(torch.float).to(self.device))
-        self.register_parameter('weights', self.W)
+            self.weights = Parameter(torch.from_numpy(rnd).type(torch.float).to(self.device))
 
         if bias is not None:
             self.bias = Parameter(bias.to(self.device))
@@ -505,7 +498,7 @@ class BM(Module):
             :returns: torch.Tensor
         '''
         bias_term = v.mv(self.bias)
-        xwx = torch.einsum('bi,ij,bj->b', (v, self.W, v))
+        xwx = torch.einsum('bi,ij,bj->b', (v, self.weights, v))
         return (-xwx - bias_term)
 
     def train(self, input_data):
@@ -530,15 +523,15 @@ class BM(Module):
             # Get positive phase from the data
             vpos = sample_data
             # Get negative phase from the chains
-            vneg = self.sampler.get_negative_phase(vpos, self.W,
+            vneg = self.sampler.get_negative_phase(vpos, self.weights,
                                                    self.bias).to(self.device)
 
             # Weight updates. Includes momentum and weight decay
             W_update, bias_update = \
                              self.optimizer.get_updates(vpos, vneg,
-                                                        self.W, self.bias)
+                                                        self.weights, self.bias)
 
-            self.W.data    += W_update.data
+            self.weights.data    += W_update.data
             self.bias.data += bias_update.data
             
         self.optimizer.epoch += 1
