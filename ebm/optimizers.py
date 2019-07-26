@@ -179,3 +179,85 @@ class Adam(Optimizer):
         hbias_update = self.learning_rate * mnorm_h / (torch.sqrt(vnorm_h) + self.eps)
 
         return W_update, vbias_update, hbias_update
+
+class AdaBound(Optimizer):
+
+    def __init__(self, learning_rate, beta1=0.9, beta2=0.999, eps=1e-8,
+                 final_lr=0.1, gamma=1e-3):
+        '''AdaBound optimizer from
+        https://www.luolc.com/publications/adabound/
+
+        Arguments:
+
+            :param learning_rate: Learning rate
+            :type learning_rate: float
+            :param beta1: Adam parameter, for first moment regularization
+            :type beta1: float
+            :param beta2: Adam parameter, for second moment regularization
+            :type beta2: float
+            :param eps: Adam parameter, to prevent divergences
+            :type eps: float
+            :param final_lr: learning rate to which the process should converge.
+                             The method should be robust to this parameter
+            :type final_lr: float
+            :param gamma: parameter on the bounds function. Method should be
+                          robust to this parameter
+            :type gamma: float
+        '''
+        super(AdaBound, self).__init__()
+        assert learning_rate >= 0, ('You should specify ' +
+                                    'a valid learning rate (>=0)')
+        self.learning_rate = learning_rate
+        self.beta1         = beta1
+        self.beta2         = beta2
+        self.eps           = eps
+        self.final_lr      = final_lr
+        self.gamma         = gamma
+        self.first_call    = True
+        self.epoch         = 0
+        self.initial_lr    = learning_rate
+
+    def get_updates(self, vpos, vneg, weights, vbias, hbias):
+        if self.first_call:
+            self.m_W = torch.zeros_like(weights)
+            self.m_v = torch.zeros_like(vbias)
+            self.m_h = torch.zeros_like(hbias)
+            self.v_W = torch.zeros_like(weights)
+            self.v_v = torch.zeros_like(vbias)
+            self.v_h = torch.zeros_like(hbias)
+            self.first_call = False
+
+        hpos = torch.sigmoid(linear(vpos, weights, hbias))
+        hneg = torch.sigmoid(linear(vneg, weights, hbias))
+        deltaW = (outer_product(hpos, vpos).mean(0)
+                  - outer_product(hneg, vneg).mean(0))
+        deltah = hpos.mean(0) - hneg.mean(0)
+        deltav = vpos.mean(0) - vneg.mean(0)
+
+        self.m_W *= self.beta1
+        self.m_W += (1 - self.beta1) * deltaW
+        self.m_v *= self.beta1
+        self.m_v += (1 - self.beta1) * deltav
+        self.m_h *= self.beta1
+        self.m_h += (1 - self.beta1) * deltah
+
+        self.v_W *= self.beta2
+        self.v_W += (1 - self.beta2) * deltaW * deltaW
+        self.v_v *= self.beta2
+        self.v_v += (1 - self.beta2) * deltav * deltav
+        self.v_h *= self.beta2
+        self.v_h += (1 - self.beta2) * deltah * deltah
+
+        m_correction = 1 - self.beta1 ** (self.epoch + 1)
+        v_correction = 1 - self.beta2 ** (self.epoch + 1)
+        step = self.learning_rate * np.sqrt(v_correction) / m_correction
+        
+        lr = self.final_lr * self.learning_rate / self.initial_lr
+        upper_bound = lr * (1 + 1 / (self.gamma * (self.epoch + 1) + 1))
+        lower_bound = lr * (1 - 1 / (self.gamma * (self.epoch + 1)))
+        
+        W_update     = (step / (torch.sqrt(self.v_W) + self.eps)).clamp_(lower_bound, upper_bound) * self.m_W
+        vbias_update = (step / (torch.sqrt(self.v_v) + self.eps)).clamp_(lower_bound, upper_bound) * self.m_v
+        hbias_update = (step / (torch.sqrt(self.v_h) + self.eps)).clamp_(lower_bound, upper_bound) * self.m_h
+
+        return W_update, vbias_update, hbias_update
