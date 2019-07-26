@@ -97,14 +97,14 @@ zero = torch.zeros(25, len(top_RBM.vbias)).to(device)
 images = [np.zeros((5 * 28, 5 * 28))]
 for i in range(200):
     sampler.continuous_output = False
-    zero = sampler.get_h_from_v(zero, top_RBM.W, top_RBM.hbias)
-    zero = sampler.get_v_from_h(zero, top_RBM.W, top_RBM.vbias)
+    zero = sampler.get_h_from_v(zero, top_RBM.weights, top_RBM.hbias)
+    zero = sampler.get_v_from_h(zero, top_RBM.weights, top_RBM.vbias)
     sample = zero
     for gen_layer in reversed(dbn.gen_layers[1:-1]):
-        sample = sampler.get_v_from_h(sample, gen_layer.W, gen_layer.vbias)
+        sample = sampler.get_v_from_h(sample, gen_layer.weights, gen_layer.vbias)
     sampler.continuous_output = continuous
     sample = sampler.get_v_from_h(sample,
-                                  dbn.gen_layers[0].W,
+                                  dbn.gen_layers[0].weights,
                                   dbn.gen_layers[0].vbias)
     datas = sample.data.cpu().numpy().reshape((25, 28, 28))
     image = np.zeros((5 * 28, 5 * 28))
