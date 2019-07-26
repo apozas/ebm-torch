@@ -96,8 +96,8 @@ print('Reconstructing images')
 zero = torch.zeros(25, 784).to(device)
 images = [zero.cpu().numpy().reshape((5 * 28, 5 * 28))]
 for i in range(k_reconstruct):
-    zero = sampler.get_h_from_v(zero, rbm.W, rbm.hbias)
-    zero = sampler.get_v_from_h(zero, rbm.W, rbm.vbias)
+    zero = sampler.get_h_from_v(zero, rbm.weights, rbm.hbias)
+    zero = sampler.get_v_from_h(zero, rbm.weights, rbm.vbias)
     if i % 3 == 0:
         datas = zero.data.cpu().numpy().reshape((25, 28, 28))
         image = np.zeros((5 * 28, 5 * 28))
