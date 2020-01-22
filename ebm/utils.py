@@ -64,6 +64,7 @@ def rbm_log_partition_function_ais(rbm, batch_size, k=None,
     betas = linspace(0, 1, n_betas)
     if reverse:
         betas = array(list(reversed(betas)))
+    betas = Tensor(betas).to(rbm.device)
     sign = int(reverse)
     if k == None:
         try:
