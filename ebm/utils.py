@@ -77,11 +77,11 @@ def rbm_log_partition_function_ais(rbm, batch_size, k=None,
     try:
         hbias = rbm.hbias.detach()
     except AttributeError:
-        hbias = zeros(rbm.weights.shape[0])
+        hbias = zeros(rbm.weights.shape[0]).to(rbm.device)
     try:
         vbias = rbm.vbias.detach()
     except AttributeError:
-        vbias = zeros(rbm.weights.shape[1])
+        vbias = zeros(rbm.weights.shape[1]).to(rbm.device)
     W = rbm.weights.detach()
     # Begin with a sample at infinite temperature
     v = sampler.get_v_from_h(zeros(batch_size, len(hbias).to(rbm.device)),
