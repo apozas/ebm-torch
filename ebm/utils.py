@@ -71,10 +71,8 @@ def rbm_log_partition_function_ais(rbm, batch_size, k=None,
             k = rbm.sampler.k
         except AttributeError:
             k = 10
-    try:
-        sampler = rbm.sampler
-    except AttributeError:
-        sampler = CD(k)
+    sampler = CD(k)
+    
     try:
         hbias = rbm.hbias.detach()
     except AttributeError:
