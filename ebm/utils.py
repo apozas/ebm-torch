@@ -83,7 +83,7 @@ def rbm_log_partition_function_ais(rbm, batch_size, k=None,
         vbias = zeros(rbm.weights.shape[1]).to(rbm.device)
     W = rbm.weights.detach()
     # Begin with a sample at infinite temperature
-    v = sampler.get_v_from_h(zeros(batch_size, len(hbias).to(rbm.device)),
+    v = sampler.get_v_from_h(zeros(batch_size, len(hbias)).to(rbm.device),
                              betas[0] * W, betas[0] * vbias)
     # Add to unnormalized probabilities
     log_factors = - (-1)**sign * rbm.free_energy(v * betas[0]).neg().detach()
